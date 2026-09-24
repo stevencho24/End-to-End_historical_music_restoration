@@ -1,3 +1,12 @@
+"""Diffusion and flow-matching schedules used across the experiments.
+
+The strongest SAMECFM setting used the straight linear flow-matching path for
+training and a uniform (linear-time) Euler ODE grid for inference.  The
+schedule comparison that selected this combination was not included in the
+paper.  DDPM and log-SNR alternatives remain here for reproducibility of the
+ablations.
+"""
+
 import torch
 
 
@@ -77,7 +86,8 @@ def make_cfm_euler_time_grid(
 ):
     """Return ``num_steps + 1`` increasing CFM Euler time points.
 
-    ``uniform`` preserves the original linear-in-time grid. ``log_snr`` uses
+    ``uniform`` is the best-performing final setting and preserves the
+    linear-in-time Euler grid. ``log_snr`` is an ablation that uses
     a fixed, audio-length-independent logistic coordinate:
 
         lambda(t) = log((1 - t) / t),  t = sigmoid(-lambda)

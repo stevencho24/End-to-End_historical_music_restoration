@@ -1,3 +1,12 @@
+"""Standalone single-file inference used by ``main.py infer``.
+
+The training code in ``trainer.py`` contains its own matching sampler for
+validation audio and TensorBoard logging; it does not call this module.
+Research-scale dataset evaluations also used dedicated batching scripts.
+This module is nevertheless the supported public path for checkpoint-based,
+arbitrary-length audio restoration and mirrors the Trainer's CFM sampler.
+"""
+
 import math
 
 import torch

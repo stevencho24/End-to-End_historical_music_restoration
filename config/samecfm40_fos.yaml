@@ -1,3 +1,10 @@
+# Final SAMECFM-40M Full-Orchestra + Section (FOS) configuration.
+#
+# This is the single template for the paper model's training, CFM inference,
+# architecture, and five-stage synthetic degradation. For a new experiment,
+# copy and rename this file, then change paths/parameters in the copy. The
+# launch script supplies machine-specific precomputed data paths.
+
 codec:
   name: same_l
 
@@ -19,7 +26,8 @@ denoiser:
     inference_timestep_schedule: uniform
     logsnr_min: -6.2
     logsnr_max: 6.2
-    inference_steps_default: 1
+    # The paper evaluation used ten uniform Euler steps.
+    inference_steps_default: 10
     inference_steps_eval: [1, 10, 20, 30, 40, 50]
     gradient_clip_norm: 1.0
     ema_decay: 0.9999
@@ -109,7 +117,8 @@ loss:
   spectral_fft_sizes: [512, 1024, 2048]
 
 training:
-  batch_size: 192
+  # Per-GPU batch in the four-rank final run (global batch 96).
+  batch_size: 24
   lr: 1.0e-4
   weight_decay: 1.0e-5
   num_epochs: 5000

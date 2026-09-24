@@ -21,7 +21,6 @@ except ImportError:
     _AES_AVAILABLE = False
 
 from .corruption import AudioCorruptor
-from .dataset import StemMixDataset
 from .experiment import Experiment
 from .diffusion_utils import (
     align_latent_pair,
@@ -535,77 +534,13 @@ class Trainer:
             print(f"Val   : {len(self.val_set)} precomputed pairs")
             return
 
-        dcfg = self.cfg["dataset"]
-        root = dcfg["root"]
-        print(f"Dataset root: {root}")
-
-        # Dataset root is expected to contain song folders, not audio files
-        # directly. For Beethoven-only training, root should contain one child
-        # folder, e.g. data/beethoven_only/beethoven/<wav>.
-        song_dirs = sorted(
-            os.path.join(root, d) for d in os.listdir(root)
-            if os.path.isdir(os.path.join(root, d))
-        )
-
-        rng = random.Random(self.cfg["training"]["seed"])
-        rng.shuffle(song_dirs)
-
-        # TEMPORARY SINGLE-FOLDER TRAINING MODE:
-        # The current subset may contain only one song directory. The original
-        # train/val split below assigns that only directory to validation and
-        # leaves training empty, causing DataLoader(num_samples=0). For now,
-        # train on all discovered song folders and reuse them for validation.
-        # Restore the commented split once the dataset root contains enough
-        # independent song folders for a real validation holdout.
-        #
-        # n_val = max(1, int(len(song_dirs) * self.cfg["training"]["val_ratio"]))
-        # val_dirs, train_dirs = song_dirs[:n_val], song_dirs[n_val:]
-        train_dirs = song_dirs
-        val_dirs = song_dirs
-
-        sr = self.sample_rate
-        self.train_set = StemMixDataset(train_dirs, dcfg, sr)
-        self.val_set = StemMixDataset(val_dirs, dcfg, sr)
-        print(f"Train : {len(self.train_set)} samples from {len(train_dirs)} songs")
-        print(f"Val   : {len(self.val_set)} samples from {len(val_dirs)} songs")
-
-        if self.distributed:
-            self.train_sampler = DistributedSampler(
-                self.train_set,
-                num_replicas=self.world_size,
-                rank=self.rank,
-                shuffle=True,
-                seed=int(tcfg["seed"]),
-                drop_last=True,
-            )
-            self.val_sampler = DisjointDistributedEvalSampler(
-                self.val_set,
-                num_replicas=self.world_size,
-                rank=self.rank,
-            )
-        self.train_loader = DataLoader(
-            self.train_set,
-            # batch_size: how many 10-second chunks are grouped into one
-            # training tensor per step. Larger batches give smoother gradient
-            # estimates but use more GPU memory.
-            batch_size=tcfg["batch_size"],
-            # shuffle: randomise chunk order every epoch so the model does not
-            # memorise sequence patterns within a song.
-            # drop_last: discard the final incomplete batch so every batch
-            # has exactly batch_size items (avoids shape surprises in DDPM).
-            shuffle=self.train_sampler is None,
-            sampler=self.train_sampler,
-            drop_last=True,
-            **loader_kw,
-        )
-        self.val_loader = DataLoader(
-            self.val_set,
-            batch_size=tcfg["batch_size"],
-            # shuffle=False for validation: deterministic order makes loss
-            # curves comparable across epochs and checkpoints.
-            shuffle=False,
-            sampler=self.val_sampler,
-            **loader_kw,
+        # The final public path accepts only the leak-free, song-level split
+        # of precomputed Full-Orchestra + Section pairs. StemMixDataset, which
+        # created arbitrary stem combinations online, belonged to early
+        # experiments and is intentionally not part of this release.
+        raise ValueError(
+            "SAMECFM-FOS requires precompute.enabled=true and explicit "
+            "precompute.train_dir/validate_dir/ground_truth_dir paths."
         )
 
     def _build_logging(self):

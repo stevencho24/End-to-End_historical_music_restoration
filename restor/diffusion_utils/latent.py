@@ -1,3 +1,17 @@
+"""SAME-L latent layout and normalization helpers.
+
+Per-channel normalization was essential for CFM training because native
+SAME-L channels have unequal offsets and scales.  Standardizing them prevents
+high-variance channels from dominating the velocity MSE, improves optimizer
+conditioning, and places the clean target on a scale compatible with the
+unit-Gaussian CFM source.  The saved ``latent_mean`` and ``latent_std`` are
+training-set statistics used both to normalize before the denoiser and to
+restore SAME-L's native latent scale before decoding.
+
+Forgetting the final unnormalization sends standardized latents to a decoder
+trained on native SAME-L latents and causes a very large quality drop.
+"""
+
 import torch
 
 
@@ -28,12 +42,14 @@ def align_latent_pair(z_cond, z_clean):
 
 
 def normalize_latent(latent, mean, std, eps=1e-6):
+    """Standardize each SAME-L channel using saved training-set statistics."""
     return (latent - mean.to(latent.device, latent.dtype)) / (
         std.to(latent.device, latent.dtype) + eps
     )
 
 
 def unnormalize_latent(latent, mean, std, eps=1e-6):
+    """Restore native SAME-L scale; this is mandatory before codec decoding."""
     return latent * (std.to(latent.device, latent.dtype) + eps) + mean.to(
         latent.device, latent.dtype
     )

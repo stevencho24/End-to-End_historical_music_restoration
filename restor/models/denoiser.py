@@ -1,3 +1,12 @@
+"""Denoiser architectures used in the restoration experiments.
+
+The paper's proposed model is :class:`CFMDiTVelocityNet40M`, selected by
+``denoiser.type: cfm_40m``.  It is intentionally listed first in
+``build_denoiser`` below.  The remaining MLP, TCN, U-Net, Conformer, direct
+DiT-MSE, DDPM, and alternate-capacity CFM implementations are retained to
+document architecture, objective, and model-size ablations.
+"""
+
 import math
 
 import torch
@@ -16,6 +25,16 @@ DIT_MSE_DENOISER_TYPES = frozenset({
 
 def build_denoiser(cfg, latent_dim=None, spectral_cfg=None):
     dtype = cfg["type"]
+
+    # Final paper methodology: a 40M-parameter 1-D DiT velocity field trained
+    # with conditional flow matching in normalized SAME-L latent space.
+    if dtype == "cfm_40m":
+        cfm_cfg = dict(cfg["cfm_40m"])
+        cfm_cfg.pop("latent_channels", None)
+        return CFMDiTVelocityNet40M(latent_channels=latent_dim, **cfm_cfg)
+
+    # Everything below this point supports preliminary experiments or the
+    # architecture/objective/capacity ablations, not the proposed CFM40 model.
     if dtype == "mlp":
         return MLPDenoiser(latent_dim, **cfg.get("mlp", {}))
     elif dtype == "tcn":
@@ -78,10 +97,6 @@ def build_denoiser(cfg, latent_dim=None, spectral_cfg=None):
         cfm_cfg = dict(cfg["cfm_16m"])
         cfm_cfg.pop("latent_channels", None)
         return CFMDiTVelocityNet16M(latent_channels=latent_dim, **cfm_cfg)
-    elif dtype == "cfm_40m":
-        cfm_cfg = dict(cfg["cfm_40m"])
-        cfm_cfg.pop("latent_channels", None)
-        return CFMDiTVelocityNet40M(latent_channels=latent_dim, **cfm_cfg)
     elif dtype == "cfm_80m":
         cfm_cfg = dict(cfg["cfm_80m"])
         cfm_cfg.pop("latent_channels", None)

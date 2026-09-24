@@ -78,6 +78,22 @@ def infer(args):
     inferencer = Inferencer(
         args.checkpoint, config_path=args.config, device=args.device,
     )
+    if args.cfm_steps is not None:
+        if args.cfm_steps < 1:
+            raise ValueError("--cfm-steps must be at least 1")
+        denoiser_type = inferencer.cfg["denoiser"]["type"]
+        if not denoiser_type.startswith("cfm"):
+            raise ValueError("--cfm-steps is valid only for a CFM checkpoint")
+        inferencer.cfg["denoiser"][denoiser_type][
+            "inference_steps_default"
+        ] = args.cfm_steps
+
+    # Seed after model construction/loading so initialization cannot consume
+    # values intended for the reproducible CFM Gaussian source latent.
+    torch.manual_seed(args.seed)
+    random.seed(args.seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(args.seed)
     inferencer.denoise_file(
         args.input, args.output,
         overlap=args.overlap, chunk_sec=args.chunk_sec,
@@ -114,6 +130,14 @@ def main():
     p_infer.add_argument("--device", default=None)
     p_infer.add_argument("--overlap", type=float, default=0.5)
     p_infer.add_argument("--chunk-sec", type=float, default=30.0)
+    p_infer.add_argument(
+        "--cfm-steps", type=int, default=None,
+        help="Override CFM Euler steps (paper evaluation used 10)",
+    )
+    p_infer.add_argument(
+        "--seed", type=int, default=42,
+        help="Seed for the CFM Gaussian source latent (default: 42)",
+    )
 
     # -- ls --
     sub.add_parser("ls", help="List all experiments")

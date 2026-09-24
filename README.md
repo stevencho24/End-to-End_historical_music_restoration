@@ -4,7 +4,9 @@ Official implementation and evaluation resources for **End-to-End Historical Mus
 
 This repository studies historical music restoration as conditional flow matching in the continuous latent space of the frozen [SAME-L](https://huggingface.co/stabilityai/SAME-L) audio autoencoder. The proposed 40M-parameter model, **SAMECFM**, maps degraded historical-audio latents toward clean musical-audio latents and decodes the restored representation at 44.1 kHz.
 
-> **Release status:** implementation, paper PDF, interactive demo, aggregate subjective results, and the published dataset are included. Model checkpoints and the arXiv identifier are forthcoming.
+> **Release status:** implementation, current paper PDF, interactive demo,
+> aggregate subjective results, and the published test set are included. The
+> model-weight download URL/checksum and arXiv identifier are forthcoming.
 
 **[Interactive demo](https://full-mix-historical-music-restorati.vercel.app)** · **[Paper PDF](paper/full_mix_historical_music_restoration.pdf)** · **[Published dataset](https://doi.org/10.5281/zenodo.22737610)**
 
@@ -28,11 +30,21 @@ The principal training configuration uses:
 - a five-stage historical-recording degradation model;
 - a 40M-parameter conditional flow-matching DiT in SAME-L space.
 
+The CFM follows the straight path from unit Gaussian noise to the clean
+normalized latent and minimizes velocity MSE in latent space. Per-channel
+SAME-L statistics are essential: they prevent high-variance channels from
+dominating the objective and keep the target scale compatible with the
+Gaussian source. Latents must be unnormalized before the frozen SAME-L
+decoder; omitting that step causes a large quality loss. Mel-spectrogram MSE
+is used for analysis, not to train SAMECFM-40M.
+
 ### Synthetic historical degradation
 
 Every clean training window passes through the same ordered five-stage chain;
 there is no probability gating. Gaussian draws are clipped to the stated
-ranges. The complete machine-readable configuration is
+ranges. The main five-stage contribution is implemented in
+[`restor/corruption.py`](restor/corruption.py); all sampled parameter
+distributions are in
 [`config/samecfm40_fos.yaml`](config/samecfm40_fos.yaml).
 
 | Stage | Operation | Sampling parameters |
@@ -56,10 +68,10 @@ each degraded input and its clean target. White-noise augmentation is not used.
 ├── checkpoints/     # Checkpoint download instructions (forthcoming)
 ├── config/          # Public SAMECFM-40M configuration
 ├── demo/            # Static Next.js paper site and synchronized audio examples
-├── examples/        # Command-line example instructions
 ├── paper/           # Paper PDF
 ├── restor/          # Model, corruption, training, and inference implementation
 ├── results/         # Aggregate, anonymous evaluation results
+├── scripts/         # Dataset download, four-GPU training, and inference launchers
 ├── main.py          # Training and inference entry point
 └── pyproject.toml
 ```
@@ -90,29 +102,66 @@ pip install -e .
 
 SAME-L is distributed under the Stability AI Community License. Review and accept its terms before use.
 
-## Inference
+## Checkpoint setup
 
-After downloading a released checkpoint:
+Checkpoint binaries are intentionally kept outside Git. After downloading the
+released weight file, preserve this exact local name:
 
-```bash
-python main.py infer \
-  --checkpoint checkpoints/samecfm_40m_fos.pt \
-  --input examples/historical_input.wav \
-  --output output/restored.wav \
-  --device cuda
+```text
+checkpoints/samecfm_40m_fos.pt
 ```
 
-Arbitrary-length input is processed using overlap-add. Audio is converted to the model sample rate and mono before SAME-L encoding.
+See [`checkpoints/README.md`](checkpoints/README.md) for the release convention.
+The checkpoint contains the architecture configuration, EMA denoiser,
+training-set latent mean/std, and all states needed for inference.
+
+## Inference
+
+The paper evaluation uses ten uniform Euler steps, CFG scale 1.0, and seed 42.
+For one arbitrary audio file:
+
+```bash
+scripts/infer_samecfm40_fos.sh path/to/historical_input.wav output/restored
+```
+
+For a directory, the same launcher recursively restores every supported audio
+file while preserving the input subdirectories:
+
+```bash
+scripts/infer_samecfm40_fos.sh path/to/input_dataset output/samecfm40_fos
+```
+
+Set `CHECKPOINT`, `DEVICE`, `CFM_STEPS`, `SEED`, `CHUNK_SEC`, or `OVERLAP` to
+override defaults. Arbitrary-length input is processed with overlap-add and is
+converted to 44.1-kHz mono before SAME-L encoding.
+
+[`restor/inference.py`](restor/inference.py) is the implementation behind the
+public `main.py infer` command. `trainer.py` has a matching internal sampler
+for validation/TensorBoard audio, which is why research runs may appear to
+perform inference from the Trainer without importing `inference.py`.
 
 ## Training
 
-The paper's Full-Orchestra + Section (FOS) configuration is provided in [`config/samecfm40_fos.yaml`](config/samecfm40_fos.yaml). Replace the documented dataset paths with local paths, then run:
+The paper's Full-Orchestra + Section configuration is
+[`config/samecfm40_fos.yaml`](config/samecfm40_fos.yaml). It is the template
+for the codec, CFM/DiT, optimizer, inference schedule, and five-stage
+degradation. The exact final launch used four DDP ranks, a per-GPU batch of 24
+(global batch 96), and precomputed five-second latent pairs:
 
 ```bash
-torchrun --standalone --nproc_per_node=4 main.py train \
-  --name samecfm40_fos \
-  --config config/samecfm40_fos.yaml
+PRECOMPUTED_ROOT=/path/to/fos_precomputed \
+FOS_CLEAN_ROOT=/path/to/public_classical_orchestral_plus_sections \
+scripts/train_samecfm40_fos_4gpu.sh
 ```
+
+`PRECOMPUTED_ROOT` must contain `train/`, `validate/`, and `ground_truth/`
+directories from the leak-free song-level FOS split. The removed
+`StemMixDataset` path belonged to early arbitrary-stem-combination experiments;
+the final submission trains only from the fixed full-orchestra and section
+mixtures. Use `RESUME=1` to resume the same experiment.
+
+The published Zenodo archive below is the unpaired historical **evaluation**
+set, not the clean FOS training corpus and not the paired latent cache.
 
 ## Evaluation
 
@@ -129,9 +178,27 @@ Aggregate subjective results are provided under [`results/`](results/). The sens
 
 The published historical unpaired test set contains 149 full-length recordings totaling **9.30 hours**: 70 Full-Orchestra and 79 Light Orchestra items. It is available from Zenodo at DOI [`10.5281/zenodo.22737610`](https://doi.org/10.5281/zenodo.22737610).
 
-## Checkpoints and examples
+Download, verify, and unpack it under the directory name expected by the
+public inference launcher:
 
-The small public listening examples are bundled in the demo. Model checkpoints will be hosted outside Git and added with SHA-256 checksums.
+```bash
+scripts/download_zenodo_test_set.sh data/historical_unpaired_test
+scripts/infer_samecfm40_fos.sh \
+  data/historical_unpaired_test \
+  output/zenodo_samecfm40_fos
+```
+
+The downloader fetches the official `audio_orchestra_70.zip`,
+`audio_light_orchestra_79.zip`, metadata, rights, and checksum files directly
+from Zenodo record 22737610 and checks the published SHA-256 values before
+unpacking. A different input dataset may be substituted in the second command.
+
+## Checkpoints and audio demos
+
+The small public listening examples are already bundled in [`demo/`](demo/),
+so a separate `examples/` directory is unnecessary. Large model weights will
+be hosted in a versioned archival release rather than Git and published with
+their exact filename, license, configuration, and SHA-256 checksum.
 
 ## Limitations
 

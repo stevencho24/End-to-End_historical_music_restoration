@@ -1,9 +1,18 @@
+"""Training objectives retained for the final model and its ablations.
+
+For the submitted SAMECFM-40M model, the only function used here is
+``latent_mse_loss``.  Specifically, it compares the predicted CFM velocity
+with the straight-path target velocity in normalized SAME-L space; it is not
+a direct restored-latent reconstruction loss.  The waveform spectral losses
+below support earlier deterministic models and objective ablations.
+"""
+
 import torch
 import torch.nn.functional as F
 
 
 def latent_mse_loss(pred, target, reduction="mean"):
-    """MSE helper for latent-space objectives."""
+    """MSE helper used by final CFM velocity training and latent ablations."""
     return F.mse_loss(pred, target.to(pred.device), reduction=reduction)
 
 

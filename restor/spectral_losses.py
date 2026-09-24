@@ -1,4 +1,10 @@
-"""PyTorch spectral transforms and MSE metrics for restor.
+"""Mel-MSE analysis and spectral ablation utilities for restor.
+
+Important: Mel-spectrogram MSE is an analysis metric in the final paper (for
+example, the codec reconstruction comparison); it is not the SAMECFM-40M
+training objective.  The final model minimizes CFM velocity MSE in normalized
+SAME-L latent space.  ``mel_stft_mse_loss`` is therefore placed before the
+other spectral objectives below to make its analysis role easy to find.
 
 The defaults intentionally mirror auraloss' frequency-domain defaults:
 single-resolution STFT uses ``n_fft=1024, hop=256, win=1024`` and
@@ -185,6 +191,37 @@ def per_file_mse(pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
     return (pred - target).square().mean(dim=dims).mean()
 
 
+def mel_stft_mse_loss(
+    pred_audio: torch.Tensor,
+    target_audio: torch.Tensor,
+    sample_rate: int,
+    spectral_cfg: dict | None = None,
+) -> torch.Tensor:
+    """Analysis-only MSE over mel-scaled STFT magnitudes.
+
+    SAMECFM-40M does not backpropagate this quantity; its training loss is the
+    latent CFM velocity MSE described in ``restor.losses``.
+    """
+    pred_audio, target_audio = prepare_audio_pair(pred_audio, target_audio)
+    n_fft = int(_cfg_value(spectral_cfg, "fft_size", DEFAULT_FFT_SIZE))
+    hop = int(_cfg_value(spectral_cfg, "hop_size", DEFAULT_HOP_SIZE))
+    win = int(_cfg_value(spectral_cfg, "win_length", DEFAULT_WIN_LENGTH))
+    center = bool(_cfg_value(spectral_cfg, "center", DEFAULT_CENTER))
+    n_mels = int(_cfg_value(spectral_cfg, "n_mels", DEFAULT_N_MELS))
+    mel = torchaudio.transforms.MelSpectrogram(
+        sample_rate=sample_rate,
+        n_fft=n_fft,
+        hop_length=hop,
+        win_length=win,
+        n_mels=n_mels,
+        center=center,
+        power=1.0,
+    ).to(pred_audio.device, dtype=pred_audio.dtype)
+    pred_mel = mel(pred_audio.squeeze(1))
+    target_mel = mel(target_audio.squeeze(1))
+    return per_file_mse(pred_mel, target_mel)
+
+
 def complex_stft_mse_loss(pred_stft, target_stft) -> torch.Tensor:
     """Per-file MSE over complex STFT real/imag channels."""
     return per_file_mse(complex_to_channels(pred_stft), complex_to_channels(target_stft))
@@ -317,33 +354,6 @@ def auralossMRSTFT(
         )
         _AURALOSS_MRSTFT_CACHE[cache_key] = loss_module
     return loss_module(pred_audio, target_audio)
-
-
-def mel_stft_mse_loss(
-    pred_audio: torch.Tensor,
-    target_audio: torch.Tensor,
-    sample_rate: int,
-    spectral_cfg: dict | None = None,
-) -> torch.Tensor:
-    """MSE over mel-scaled STFT magnitudes using auraloss single-STFT defaults."""
-    pred_audio, target_audio = prepare_audio_pair(pred_audio, target_audio)
-    n_fft = int(_cfg_value(spectral_cfg, "fft_size", DEFAULT_FFT_SIZE))
-    hop = int(_cfg_value(spectral_cfg, "hop_size", DEFAULT_HOP_SIZE))
-    win = int(_cfg_value(spectral_cfg, "win_length", DEFAULT_WIN_LENGTH))
-    center = bool(_cfg_value(spectral_cfg, "center", DEFAULT_CENTER))
-    n_mels = int(_cfg_value(spectral_cfg, "n_mels", DEFAULT_N_MELS))
-    mel = torchaudio.transforms.MelSpectrogram(
-        sample_rate=sample_rate,
-        n_fft=n_fft,
-        hop_length=hop,
-        win_length=win,
-        n_mels=n_mels,
-        center=center,
-        power=1.0,
-    ).to(pred_audio.device, dtype=pred_audio.dtype)
-    pred_mel = mel(pred_audio.squeeze(1))
-    target_mel = mel(target_audio.squeeze(1))
-    return per_file_mse(pred_mel, target_mel)
 
 
 def compute_spectral_mse_losses(
