@@ -2,6 +2,7 @@
 
 [![Demo](https://img.shields.io/badge/Demo-2ea44f?style=flat&logo=vercel&logoColor=white)](https://full-mix-historical-music-restorati.vercel.app/)
 ![arXiv: TBD](https://img.shields.io/badge/arXiv-TBD-b31b1b?style=flat&logo=arxiv&logoColor=white)
+[![Dataset: Zenodo](https://img.shields.io/badge/Dataset-Zenodo-1682D4?style=flat&logo=zenodo&logoColor=white)](https://doi.org/10.5281/zenodo.22737610)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat&logo=python&logoColor=white)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat)](LICENSE)
 
@@ -12,8 +13,6 @@ This repository studies historical music restoration as conditional flow matchin
 > **Release status:** implementation, current paper PDF, interactive demo,
 > aggregate subjective results, published test set, and SAMECFM-40M checkpoint
 > are included. The arXiv identifier is forthcoming.
-
-[Paper PDF](paper/full_mix_historical_music_restoration.pdf) · [Published dataset](https://doi.org/10.5281/zenodo.22737610)
 
 ## 🚀 Quickstart: restore one file
 
